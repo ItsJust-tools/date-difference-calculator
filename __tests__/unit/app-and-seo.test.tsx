@@ -12,11 +12,11 @@ import { cn } from '@/lib/utils';
 import { generateJsonLd, generateToolMetadata } from '@/lib/seo';
 import toolConfig from '@/tool/tool.config';
 import { getPublicSiteUrl, templateMetadata } from '@/tool/template-metadata';
-import { baseConverterTool } from '@/tool/tool-definition';
+import { dateDifferenceTool } from '@/tool/tool-definition';
 import { ToolCanvas } from '@/tool/components/tool-canvas';
 import { ToolSidebar } from '@/tool/components/tool-sidebar';
 import { ToolToolbar } from '@/tool/components/tool-toolbar';
-import { DEFAULT_STATE } from '@/tool/types';
+import { DEFAULT_STATE as BASE_DEFAULT_STATE } from '@/tool/types';
 import type { ExporterLoader } from '@itsjust/core';
 
 vi.mock('next/link', () => ({
@@ -93,27 +93,40 @@ describe('app and seo', () => {
   it('covers tool definition and helper exports', async () => {
     expect(cn('a', undefined, 'b', false, null, 'c')).toBe('a b c');
     expect(getPublicSiteUrl()).toBe('http://localhost:3000');
-    expect(baseConverterTool.deserialize({ input: 'ff', inputBase: 16 })).toEqual({
+    expect(dateDifferenceTool.name).toBe(toolConfig.name);
+    expect(
+      dateDifferenceTool.deserialize({
+        startDate: '2026-01-01',
+        endDate: '2026-11-21',
+        mode: 'business',
+        holidays: ['2026-12-25'],
+      })
+    ).toEqual({
       success: true,
       data: {
-        input: 'ff',
-        inputBase: 16,
-        digitCase: 'lower',
-        grouping: 'none',
-        showTwosComplement: true,
-        bitLength: DEFAULT_STATE.bitLength,
+        startDate: '2026-01-01',
+        endDate: '2026-11-21',
+        mode: 'business',
+        includeEndDay: true,
+        excludeWeekends: true,
+        holidays: ['2026-12-25'],
+        shiftBaseDate: '',
+        shiftAmount: 14,
+        shiftUnit: 'day',
+        shiftBusinessOnly: false,
       },
     });
-    expect(baseConverterTool.deserialize({ nope: true })).toEqual({
-      success: false,
-      error: 'Invalid data format: expected { input: string, inputBase: number (2-36), ... }',
-    });
-    expect(baseConverterTool.serialize({ ...DEFAULT_STATE, input: '11' })).toContain('"input":"11"');
-    expect(baseConverterTool.deserialize({ input: '11', inputBase: 10, digitCase: 'upper', grouping: 'byte', bitLength: 8 })).toEqual({
-      success: true,
-      data: { input: '11', inputBase: 10, digitCase: 'upper', grouping: 'byte', showTwosComplement: true, bitLength: 8 },
-    });
-    const exporters = (baseConverterTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
+    const repaired = dateDifferenceTool.deserialize({ nope: true });
+    expect(repaired.success).toBe(true);
+    if (repaired.success) {
+      expect(repaired.data.startDate).toBe('');
+      expect(repaired.data.mode).toBe('difference');
+    }
+    expect(
+      dateDifferenceTool.serialize({ ...BASE_DEFAULT_STATE, startDate: '2026-01-01' })
+    ).toContain('"startDate":"2026-01-01"');
+    const exporters =
+      (dateDifferenceTool as { exporters?: Array<{ loader: ExporterLoader }> }).exporters ?? [];
     expect(exporters).toHaveLength(4);
     const first = exporters[0];
     expect(first).toBeDefined();
@@ -127,14 +140,19 @@ describe('app and seo', () => {
     render(
       <>
         <ToolToolbar />
-        <ToolSidebar text="ff" fontSize={16} onFontSizeChange={() => {}} />
-        <ToolCanvas state={{ ...DEFAULT_STATE, input: '255' }} fontSize={16} />
+        <ToolSidebar fontSize={16} onFontSizeChange={() => {}} />
+        <ToolCanvas
+          state={{ ...BASE_DEFAULT_STATE, startDate: '2026-01-01', endDate: '2026-01-31' }}
+          fontSize={16}
+        />
       </>
     );
 
     expect(screen.getByRole('link', { name: 'Open help page' })).toBeInTheDocument();
-    expect(screen.getByText('2')).toBeInTheDocument(); // digit count for "ff"
-    expect(screen.getByRole('application', { name: 'Base converter canvas' })).toBeInTheDocument();
-    expect(screen.getByTestId('base-row-16')).toHaveTextContent('ff');
+    expect(
+      screen.getByRole('application', { name: 'Date difference calculator canvas' })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('mode-tab-difference')).toBeInTheDocument();
+    expect(screen.getByTestId('result-card')).toBeInTheDocument();
   });
 });
